@@ -1,0 +1,143 @@
+# Guia de Teste de Requisições POST com MySQL, Backend Java/JavaScript e Postman
+
+Este guia detalha o processo de teste de uma API que recebe dados via requisição **POST** e os armazena em um banco de dados **MySQL**. O foco será na metodologia de teste utilizando o **Postman**, considerando que o backend pode ser desenvolvido em **Java** (ex: Spring Boot) ou **JavaScript** (ex: Node.js/Express).
+
+## 1. Pré-requisitos
+
+Para realizar o teste, você precisará dos seguintes componentes:
+
+1.  **Banco de Dados MySQL:** Um servidor MySQL em execução.
+2.  **Estrutura de Dados (Schema):** Uma tabela criada para receber os dados.
+3.  **Backend (API):** Um serviço rodando (Java ou JavaScript) com um *endpoint* configurado para receber requisições POST e executar a lógica de inserção no MySQL.
+4.  **Postman:** O aplicativo Postman instalado para enviar as requisições.
+
+## 2. Configuração do Banco de Dados MySQL
+
+Primeiro, crie um banco de dados e uma tabela de exemplo.
+
+```sql
+-- Criação do Banco de Dados
+CREATE DATABASE IF NOT EXISTS api_teste_db;
+USE api_teste_db;
+
+-- Criação da Tabela de Exemplo (ex: para registrar um novo usuário)
+CREATE TABLE IF NOT EXISTS usuarios (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    nome VARCHAR(100) NOT NULL,
+    email VARCHAR(100) NOT NULL UNIQUE,
+    data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+## 3. Lógica do Backend (Java ou JavaScript)
+
+O backend é responsável por:
+1.  Receber a requisição POST (geralmente um JSON).
+2.  Validar os dados recebidos.
+3.  Conectar-se ao MySQL.
+4.  Executar uma instrução `INSERT` na tabela `usuarios`.
+5.  Retornar uma resposta HTTP (ex: `201 Created` ou `400 Bad Request`).
+
+### Exemplo Conceitual de Código (Java/Spring Boot)
+
+Em um controlador Spring Boot, o método POST se pareceria com:
+
+```java
+@PostMapping("/usuarios")
+public ResponseEntity<Usuario> criarUsuario(@RequestBody Usuario novoUsuario) {
+    // 1. Lógica de validação (se necessário)
+    if (novoUsuario.getNome() == null || novoUsuario.getEmail() == null) {
+        return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+    }
+
+    // 2. Lógica de inserção no MySQL (via Service/Repository)
+    Usuario usuarioSalvo = usuarioService.salvar(novoUsuario);
+
+    // 3. Retorno de sucesso
+    return new ResponseEntity<>(usuarioSalvo, HttpStatus.CREATED);
+}
+```
+
+### Exemplo Conceitual de Código (JavaScript/Node.js/Express)
+
+Em um servidor Express, a rota POST se pareceria com:
+
+```javascript
+app.post('/usuarios', (req, res) => {
+    const { nome, email } = req.body;
+
+    // 1. Lógica de validação
+    if (!nome || !email) {
+        return res.status(400).send({ message: 'Nome e email são obrigatórios.' });
+    }
+
+    // 2. Lógica de inserção no MySQL (usando um pool de conexões)
+    const query = 'INSERT INTO usuarios (nome, email) VALUES (?, ?)';
+    db.query(query, [nome, email], (err, result) => {
+        if (err) {
+            console.error(err);
+            return res.status(500).send({ message: 'Erro ao salvar no banco de dados.' });
+        }
+        
+        // 3. Retorno de sucesso
+        res.status(201).send({ id: result.insertId, nome, email });
+    });
+});
+```
+
+## 4. Teste da Requisição POST com Postman
+
+O Postman é a ferramenta ideal para simular a requisição do cliente para o seu backend.
+
+### Passo a Passo no Postman
+
+| Passo | Ação | Detalhes |
+| :--- | :--- | :--- |
+| **1** | **Nova Requisição** | Clique em `New` e selecione `HTTP Request`. |
+| **2** | **Método** | Mude o método de `GET` para **`POST`**. |
+| **3** | **URL** | Insira a URL completa do seu *endpoint*. Ex: `http://localhost:8080/api/usuarios` |
+| **4** | **Corpo (Body)** | Clique na aba `Body`, selecione a opção **`raw`** e escolha o formato **`JSON`** no dropdown. |
+| **5** | **Dados JSON** | Insira o corpo da requisição com os dados que você deseja salvar: |
+| **6** | **Enviar** | Clique no botão **`Send`**. |
+
+### Exemplo de Corpo JSON
+
+```json
+{
+    "nome": "Carlos Silva",
+    "email": "carlos.silva@exemplo.com"
+}
+```
+
+## 5. Análise dos Resultados do Teste
+
+Após enviar a requisição, o Postman exibirá a resposta do servidor na parte inferior da tela.
+
+### Resultados Esperados (Sucesso)
+
+| Componente | Valor Esperado | Significado |
+| :--- | :--- | :--- |
+| **Status Code** | `201 Created` | Indica que a requisição foi bem-sucedida e um novo recurso foi criado. |
+| **Body** | Um JSON contendo os dados do usuário criado, incluindo o `id` gerado pelo MySQL. | Confirma que o backend processou a inserção e retornou o objeto. |
+| **MySQL** | Uma nova linha na tabela `usuarios` com os dados enviados. | **Verificação crucial:** Você deve executar um `SELECT * FROM usuarios;` no seu cliente MySQL para confirmar a persistência dos dados. |
+
+### Testes de Falha (Boas Práticas)
+
+Além do teste de sucesso, é fundamental testar cenários de falha para garantir a robustez da sua API:
+
+1.  **Dados Faltando:** Envie um JSON sem o campo `nome` ou `email`.
+    *   *Esperado:* Status `400 Bad Request` e uma mensagem de erro clara.
+2.  **Dados Inválidos:** Envie um email que já existe no banco de dados (devido à restrição `UNIQUE` na tabela).
+    *   *Esperado:* Status `409 Conflict` ou `500 Internal Server Error` (dependendo da sua lógica de tratamento de erro do backend) e uma mensagem indicando a duplicidade.
+3.  **Formato Incorreto:** Envie o corpo da requisição como texto simples em vez de JSON.
+    *   *Esperado:* Status `415 Unsupported Media Type` ou `400 Bad Request`.
+
+## Resumo do Fluxo
+
+1.  **Postman** envia a requisição **POST** com o JSON.
+2.  O **Backend (Java/JavaScript)** recebe o JSON.
+3.  O Backend se conecta ao **MySQL**.
+4.  O Backend executa o comando **INSERT**.
+5.  O **MySQL** armazena o dado e retorna o sucesso da operação.
+6.  O Backend envia a resposta **201 Created** de volta ao **Postman**.
+7.  Você verifica o **Postman** e o **MySQL** para confirmar o sucesso.
